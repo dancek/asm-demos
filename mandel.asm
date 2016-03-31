@@ -22,7 +22,7 @@ start:
 
 draw:
     ; local variable: line index
-    push dword YSIZE
+    push dword YSIZE-1
 _draw_loop:
     call fill_line
     call print_line
@@ -37,7 +37,7 @@ _draw_loop:
 ;   [esp+4] line number
 
 fill_line:
-    mov     ebx, XSIZE-1
+    mov     ecx, XSIZE-1
 _fill_line_loop:
     ; compute st(0) and st(1) from row and column
     ; st(1): c_i or line
@@ -47,7 +47,7 @@ _fill_line_loop:
     push    HALFSIZE
     fidiv   dword [esp]
     ; st(0): c_r or column
-    push    dword ebx
+    push    ecx
     sub     dword [esp], (XSIZE-HALFSIZE)
     fild    dword [esp]
     push    HALFSIZE
@@ -55,29 +55,27 @@ _fill_line_loop:
     add     esp, 16     ; reset after 4 dword pushes
     ; run mandelbrot iteration and add character
     call    is_mandelbrot
-    fninit      ; clear FPU stack
     cmp     eax, 0
     je      _fill_line_false
 _fill_line_true:
-    mov     byte [line+ebx], '#'
+    mov     byte [line+ecx], '#'
     jmp     _fill_line_next
 _fill_line_false:
-    mov     byte [line+ebx], '.'
+    mov     byte [line+ecx], '.'
 _fill_line_next:
-    dec     ebx
-    jge     _fill_line_loop
+    loop     _fill_line_loop
     ret
 
 print_line:
-    ; Mac OS X: put parameters in stack
-    push    dword LINELEN
-    push    dword line
-    push    dword 1
-    sub     esp, 4      ; extra space on stack
     ; Linux: parameters in registers
     mov     edx, LINELEN
     mov     ecx, line
     mov     ebx, 1
+    ; Mac OS X: put parameters in stack
+    push    edx
+    push    ecx
+    push    ebx
+    sub     esp, 4      ; extra space on stack
     ; common
     mov     eax, 4      ; syscall: write
     int     0x80
@@ -85,9 +83,11 @@ print_line:
     ret
 
 exit:
-    push    dword 0     ; exit status: 0
-    mov     eax, 1      ; syscall: exit
+    ; exit status: 0
+    xor     ebx, ebx    ; Linux
+    push    ebx         ; Mac
     sub     esp, 4
+    mov     eax, 1      ; syscall: exit
     int     0x80
 
 
@@ -154,7 +154,14 @@ _is_mandelbrot_check:
     jb _is_mandelbrot_loop
 _is_mandelbrot_true:
     mov     eax, 1
-    ret
+    jmp _is_mandelbrot_return
 _is_mandelbrot_false:
-    mov     eax, 0
+    xor     eax, eax
+_is_mandelbrot_return:
+    ; clear FPU stack
+    fstp    st0
+    fstp    st0
+    fstp    st0
+    fstp    st0
+    fstp    st0
     ret
