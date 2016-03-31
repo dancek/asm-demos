@@ -1,5 +1,6 @@
-; Mandelbrot in x86 assembly for Mac OS X
-; Usage: /usr/local/bin/nasm -f macho mandel.asm && ld -macosx_version_min 10.7.0 -o mandel mandel.o && ./mandel
+; Mandelbrot in x86 assembly for Linux / Mac OS X
+; Mac: /usr/local/bin/nasm -f macho mandel.asm && ld -macosx_version_min 10.7.0 -o mandel mandel.o && ./mandel
+; Linux: nasm -f elf mandel.asm && ld -m elf_i386 -e start -o mandel mandel.o && ./mandel
 
 %define HALFSIZE 25
 %define XSIZE 3*HALFSIZE
@@ -68,11 +69,17 @@ _fill_line_next:
     ret
 
 print_line:
+    ; Mac OS X: put parameters in stack
     push    dword LINELEN
     push    dword line
     push    dword 1
-    mov     eax, 4      ; syscall: write
     sub     esp, 4      ; extra space on stack
+    ; Linux: parameters in registers
+    mov     edx, LINELEN
+    mov     ecx, line
+    mov     ebx, 1
+    ; common
+    mov     eax, 4      ; syscall: write
     int     0x80
     add     esp, 16     ; reset stack
     ret
