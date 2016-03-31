@@ -1,9 +1,11 @@
 ; Mandelbrot in x86 assembly for Mac OS X
 ; Usage: /usr/local/bin/nasm -f macho mandel.asm && ld -macosx_version_min 10.7.0 -o mandel mandel.o && ./mandel
 
-%define SIZE 40
+%define HALFSIZE 25
+%define XSIZE 3*HALFSIZE
+%define YSIZE 2*HALFSIZE
 %define ITERATIONS 64
-%define LINELEN SIZE+1
+%define LINELEN XSIZE+1
 
 global start
 
@@ -12,14 +14,14 @@ line:   resb    LINELEN
 
 section .text
 start:
-    mov byte [line+SIZE], `\n`  ; add newline after each line (this isn't overwritten)
+    mov byte [line+XSIZE], `\n`  ; add newline after each line (this isn't overwritten)
     finit
     call draw
     jmp exit
 
 draw:
     ; local variable: line index
-    push dword SIZE
+    push dword YSIZE
 _draw_loop:
     call fill_line
     call print_line
@@ -34,20 +36,20 @@ _draw_loop:
 ;   [esp+4] line number
 
 fill_line:
-    mov     ebx, SIZE-1
+    mov     ebx, XSIZE-1
 _fill_line_loop:
     ; compute st(0) and st(1) from row and column
     ; st(1): c_i or line
     push    dword [esp+4]
-    sub     dword [esp], SIZE/2
+    sub     dword [esp], HALFSIZE
     fild    dword [esp]
-    push    SIZE/2
+    push    HALFSIZE
     fidiv   dword [esp]
     ; st(0): c_r or column
     push    dword ebx
-    sub     dword [esp], SIZE/2
+    sub     dword [esp], (XSIZE-HALFSIZE)
     fild    dword [esp]
-    push    SIZE/2
+    push    HALFSIZE
     fidiv   dword [esp]
     add     esp, 16     ; reset after 4 dword pushes
     ; run mandelbrot iteration and add character
@@ -99,25 +101,18 @@ is_mandelbrot:
     fldz
     jmp _is_mandelbrot_check    ; start with squaring z_r and z_i
 _is_mandelbrot_loop:
-        ; stack: z_r, z_i, c_r, c_i
     dec edx
     jz _is_mandelbrot_false
-    ; temp_i = 2 * z_r^2
-    fldz
-        ; stack: temp_i, z_r^2, z_i^2, c_r, c_i
-    fadd    st0, st1
-    fadd    st0, st1
+        ; stack: z_r*z_i, z_r^2, z_i^2, c_r, c_i
     ; temp_r = z_r^2 - z_i^2
-    fldz
-    fadd    st0, st2
-    fsub    st0, st3
-fpu:
-        ; stack: temp_r, temp_i, z_r^2, z_i^2, c_r, c_i
-    ; shuffle stack
+    fincstp
+    fsub    st0, st1
+    fdecstp
+    ; temp_i = 2 * z_r * z_i
+    fadd    st0, st0
+        ; stack: temp_i, temp_r, _, c_r, c_i
     fxch    st2
     fstp    st0     ; pop and discard
-    fxch    st2
-    fstp    st0
         ; stack: temp_r, temp_i, c_r, c_i
     ; z_r = temp_r + c_r
     fadd    st0, st2    ; z_r += c_r
@@ -127,17 +122,22 @@ fpu:
     fdecstp
         ; stack: z_r, z_i, c_r, c_i
 _is_mandelbrot_check:
-    ; square z_r and z_i (because we only need the squares)
+    ; compute z_r^2, z_i^2 and z_r*z_i
+    fld     st0
+    fmul    st0, st2
+    fincstp
     fmul    st0, st0
     fincstp
     fmul    st0, st0
     fdecstp
+    fdecstp
+        ; stack: z_r*z_i, z_r^2, z_i^2, c_r, c_i
     ; check z_r^2 + z_i^2 > 4
     push    dword -4
     fild    dword [esp]
     add     esp, 4
-    fadd    st1
     fadd    st2
+    fadd    st3
     ; test st0 > 0
     ftst
     fstsw   ax
