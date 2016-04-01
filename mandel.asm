@@ -1,12 +1,22 @@
 ; Mandelbrot in x86 assembly for Linux / Mac OS X
 ; Mac: /usr/local/bin/nasm -f macho mandel.asm && ld -macosx_version_min 10.7.0 -o mandel mandel.o && ./mandel
 ; Linux: nasm -f elf mandel.asm && ld -m elf_i386 -e start -o mandel mandel.o && ./mandel
+;
+; Optional features (add to nasm parameters):
+;   -dCOLORS
 
 %define HALFSIZE 25
 %define XSIZE 3*HALFSIZE
 %define YSIZE 2*HALFSIZE
-%define ITERATIONS 64
-%define LINELEN XSIZE+1
+%define ITERATIONS 24
+
+%ifdef COLORS
+%define BPP 12    ; bytes per "pixel", ie. "<ESC>[48;5;240m "
+%else
+%define BPP 1
+%endif
+
+%define LINELEN (XSIZE*BPP)+1
 
 global start
 
@@ -15,7 +25,7 @@ line:   resb    LINELEN
 
 section .text
 start:
-    mov byte [line+XSIZE], `\n`  ; add newline after each line (this isn't overwritten)
+    mov byte [line+LINELEN-1], `\n`  ; add newline after each line (this isn't overwritten)
     finit
     call draw
     jmp exit
@@ -55,6 +65,7 @@ _fill_line_loop:
     add     esp, 16     ; reset after 4 dword pushes
     ; run mandelbrot iteration and add character
     call    is_mandelbrot
+%ifndef COLORS
     cmp     eax, 0
     je      _fill_line_false
 _fill_line_true:
@@ -62,6 +73,19 @@ _fill_line_true:
     jmp     _fill_line_next
 _fill_line_false:
     mov     byte [line+ecx], '.'
+%else
+    mov     ebx, ecx
+    imul    ebx, BPP
+    mov     dword [line+ebx], `\e[48`
+    mov     dword [line+ebx+4], ';5;2'
+    add     al, 31
+    mov     dl, 10
+    div     dl
+    add     al, 48
+    add     ah, 48
+    mov     word [line+ebx+8], ax
+    mov     word [line+ebx+10], 'm '
+%endif
 _fill_line_next:
     loop     _fill_line_loop
     ret
@@ -153,7 +177,8 @@ _is_mandelbrot_check:
     sahf
     jb _is_mandelbrot_loop
 _is_mandelbrot_true:
-    mov     eax, 1
+    mov     eax, ITERATIONS
+    sub     eax, edx
     jmp _is_mandelbrot_return
 _is_mandelbrot_false:
     xor     eax, eax
