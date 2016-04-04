@@ -47,7 +47,7 @@ _draw_loop:
 ;   [esp+4] line number
 
 fill_line:
-    mov     ecx, XSIZE-1
+    mov     ecx, XSIZE
 _fill_line_loop:
     ; compute st(0) and st(1) from row and column
     ; st(1): c_i or line
@@ -69,12 +69,13 @@ _fill_line_loop:
     cmp     eax, 0
     je      _fill_line_false
 _fill_line_true:
-    mov     byte [line+ecx], '#'
+    mov     byte [line+ecx-1], '#'
     jmp     _fill_line_next
 _fill_line_false:
-    mov     byte [line+ecx], '.'
+    mov     byte [line+ecx-1], '.'
 %else
     mov     ebx, ecx
+    dec     ebx         ; loop indexing offset: the last iteration is ecx == 1
     imul    ebx, BPP
     mov     dword [line+ebx], `\e[48`
     mov     dword [line+ebx+4], ';5;2'
@@ -87,7 +88,7 @@ _fill_line_false:
     mov     word [line+ebx+10], 'm '
 %endif
 _fill_line_next:
-    loop     _fill_line_loop
+    loop    _fill_line_loop
     ret
 
 print_line:
