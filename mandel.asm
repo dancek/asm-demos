@@ -3,34 +3,42 @@
 ; Linux: nasm -f elf mandel.asm && ld -m elf_i386 -e start -o mandel mandel.o && ./mandel
 ;
 ; Optional features (add to nasm parameters):
-;   -dCOLORS
+;   -dDUMB      minimal version that doesn't use ANSI sequences
+;   -dANIMATE   experimental animation
 
 %define HALFSIZE 25
 %define XSIZE 3*HALFSIZE
 %define YSIZE 2*HALFSIZE
 %define ITERATIONS 24
 
-%ifdef COLORS
+%ifndef DUMB
 %define BPP 12    ; bytes per "pixel", ie. "<ESC>[48;5;240m "
-%else
-%define BPP 1
-%endif
-
 %define LINELEN (XSIZE*BPP)+1
+%else
+%define LINELEN XSIZE+1
+%endif
+%define LINE line
+
 
 global start
 
 section .bss
 line:   resb    LINELEN
 
+section .data
+ansi_clear: db `\e[1;1H`
+.len:       equ $ - ansi_clear
+
 section .text
 start:
-    mov byte [line+LINELEN-1], `\n`  ; add newline after each line (this isn't overwritten)
+    ; newline after each line (this isn't overwritten)
+    mov byte [line+LINELEN-1], `\n`
     finit
     call draw
     jmp exit
 
 draw:
+    call clear_screen
     ; local variable: line index
     push dword YSIZE-1
 _draw_loop:
@@ -39,6 +47,9 @@ _draw_loop:
     dec dword [esp]
     jg _draw_loop
     add esp, 4
+%ifdef ANIMATE
+    jmp draw
+%endif
     ret
 
 
@@ -65,27 +76,27 @@ _fill_line_loop:
     add     esp, 16     ; reset after 4 dword pushes
     ; run mandelbrot iteration and add character
     call    is_mandelbrot
-%ifndef COLORS
+%ifdef DUMB
     cmp     eax, 0
     je      _fill_line_false
 _fill_line_true:
-    mov     byte [line+ecx-1], '#'
+    mov     byte [LINE+ecx-1], '#'
     jmp     _fill_line_next
 _fill_line_false:
-    mov     byte [line+ecx-1], '.'
+    mov     byte [LINE+ecx-1], '.'
 %else
     mov     ebx, ecx
     dec     ebx         ; loop indexing offset: the last iteration is ecx == 1
     imul    ebx, BPP
-    mov     dword [line+ebx], `\e[48`
-    mov     dword [line+ebx+4], ';5;2'
+    mov     dword [LINE+ebx], `\e[48`
+    mov     dword [LINE+ebx+4], ';5;2'
     add     al, 31
     mov     dl, 10
     div     dl
     add     al, 48
     add     ah, 48
-    mov     word [line+ebx+8], ax
-    mov     word [line+ebx+10], 'm '
+    mov     word [LINE+ebx+8], ax
+    mov     word [LINE+ebx+10], 'm '
 %endif
 _fill_line_next:
     loop    _fill_line_loop
@@ -95,6 +106,22 @@ print_line:
     ; Linux: parameters in registers
     mov     edx, LINELEN
     mov     ecx, line
+    mov     ebx, 1
+    ; Mac OS X: put parameters in stack
+    push    edx
+    push    ecx
+    push    ebx
+    sub     esp, 4      ; extra space on stack
+    ; common
+    mov     eax, 4      ; syscall: write
+    int     0x80
+    add     esp, 16     ; reset stack
+    ret
+
+clear_screen:
+    ; Linux: parameters in registers
+    mov     edx, ansi_clear.len
+    mov     ecx, ansi_clear
     mov     ebx, 1
     ; Mac OS X: put parameters in stack
     push    edx
